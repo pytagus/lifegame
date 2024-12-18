@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jeu de la Vie Infini</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;  /* Empêche les barres de défilement */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        
+        #gameCanvas {
+            border: none;  /* Supprime la bordure précédente */
+            background-color: black;
+        }
+
+        h1 {
+            position: absolute;
+            top: 10px;
+            color: white;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1></h1>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const cellSize = 20;  // Cellules plus grandes pour mieux voir la grille
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        let isRunning = false;
+        let intervalId = null;
+        let scale = 1;
+        const ZOOM_SPEED = 0.1;
+
+        // Ajouter un écouteur pour le redimensionnement
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            draw();
+        });
+
+        // Modifier la fonction draw pour ajouter la grille
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Dessiner la grille
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 0.5;
+            
+            const scaledCellSize = cellSize * scale;
+            const startX = Math.floor(-offset.x / scaledCellSize);
+            const startY = Math.floor(-offset.y / scaledCellSize);
+            const endX = startX + Math.ceil(width / scaledCellSize) + 1;
+            const endY = startY + Math.ceil(height / scaledCellSize) + 1;
+
+            // Lignes verticales
+            for (let x = startX; x <= endX; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * scaledCellSize + offset.x, 0);
+                ctx.lineTo(x * scaledCellSize + offset.x, height);
+                ctx.stroke();
+            }
+
+            // Lignes horizontales
+            for (let y = startY; y <= endY; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * scaledCellSize + offset.y);
+                ctx.lineTo(width, y * scaledCellSize + offset.y);
+                ctx.stroke();
+            }
+
+            // Dessiner les cellules
+            for (let [key] of cells) {
+                const [x, y] = key.split(',').map(Number);
+                if (x >= startX && x <= endX && y >= startY && y <= endY) {
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.fillRect(
+                        x * scaledCellSize + offset.x,
+                        y * scaledCellSize + offset.y,
+                        scaledCellSize - 1,
+                        scaledCellSize - 1
+                    );
+                }
+            }
+        }
+
+        let cells = new Map();
+        let offset = { x: 0, y: 0 };
+        let isDragging = false;
+        let lastPos = { x: 0, y: 0 };
+
+        // Fonction pour obtenir la clé unique pour une cellule
+        function getCellKey(x, y) {
+            return `${x},${y}`;
+        }
+
+        // Initialisation des événements de la souris
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseup', () => isDragging = false);
+        canvas.addEventListener('click', handleClick);
+
+        function handleMouseDown(e) {
+            isDragging = true;
+            lastPos = {
+                x: e.clientX,
+                y: e.clientY
+            };
+        }
+
+        function handleMouseMove(e) {
+            if (isDragging) {
+                offset.x += e.clientX - lastPos.x;
+                offset.y += e.clientY - lastPos.y;
+                lastPos = {
+                    x: e.clientX,
+                    y: e.clientY
+                };
+                draw();
+            }
+        }
+
+        function handleClick(e) {
+            if (!isDragging) {
+                const scaledCellSize = cellSize * scale;
+                const x = Math.floor((e.clientX - offset.x) / scaledCellSize);
+                const y = Math.floor((e.clientY - offset.y) / scaledCellSize);
+                const key = getCellKey(x, y);
+                
+                if (cells.has(key)) {
+                    cells.delete(key);
+                } else {
+                    cells.set(key, true);
+                }
+                draw();
+            }
+        }
+
+        function getNeighbors(x, y) {
+            let count = 0;
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue;
+                    if (cells.has(getCellKey(x + dx, y + dy))) count++;
+                }
+            }
+            return count;
+        }
+
+        function update() {
+            const newCells = new Map();
+            const cellsToCheck = new Set();
+
+            // Ajouter toutes les cellules vivantes et leurs voisines à vérifier
+            for (let [key] of cells) {
+                const [x, y] = key.split(',').map(Number);
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        cellsToCheck.add(getCellKey(x + dx, y + dy));
+                    }
+                }
+            }
+
+            // Vérifier chaque cellule
+            for (let key of cellsToCheck) {
+                const [x, y] = key.split(',').map(Number);
+                const neighbors = getNeighbors(x, y);
+                const isAlive = cells.has(key);
+
+                if (isAlive && (neighbors === 2 || neighbors === 3)) {
+                    newCells.set(key, true);
+                } else if (!isAlive && neighbors === 3) {
+                    newCells.set(key, true);
+                }
+            }
+
+            cells = newCells;
+            draw();
+        }
+
+        // Contrôle avec la barre d'espace
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (isRunning) {
+                    isRunning = false;
+                    clearInterval(intervalId);
+                } else {
+                    isRunning = true;
+                    intervalId = setInterval(update, 100);
+                }
+            } else if (e.code === 'KeyG') {
+                // Calculer la position de la souris dans la grille
+                const scaledCellSize = cellSize * scale;
+                const mouseX = Math.floor((lastPos.x - offset.x) / scaledCellSize);
+                const mouseY = Math.floor((lastPos.y - offset.y) / scaledCellSize);
+                generateRandomStructure(mouseX, mouseY);
+            }
+        });
+
+        // Ajouter l'écouteur d'événement pour la molette
+        canvas.addEventListener('wheel', handleWheel);
+
+        // Ajouter cette nouvelle fonction
+        function handleWheel(e) {
+            e.preventDefault();
+            
+            // Récupérer la position de la souris avant le zoom
+            const mouseX = e.clientX - offset.x;
+            const mouseY = e.clientY - offset.y;
+
+            // Calculer le nouveau scale
+            const delta = e.deltaY > 0 ? -ZOOM_SPEED : ZOOM_SPEED;
+            const newScale = Math.max(0.1, Math.min(5, scale + delta));
+            
+            // Ajuster l'offset pour zoomer vers le curseur de la souris
+            if (newScale !== scale) {
+                const scaleChange = newScale - scale;
+                offset.x -= mouseX * scaleChange / scale;
+                offset.y -= mouseY * scaleChange / scale;
+                scale = newScale;
+            }
+
+            draw();
+        }
+
+        // Initialisation
+        canvas.width = width;
+        canvas.height = height;
+        draw();
+
+        // Ajouter cette fonction pour générer une structure aléatoire
+        function generateRandomStructure(centerX, centerY) {
+            const size = 30; // Taille de la zone 30x30
+            const halfSize = Math.floor(size / 2);
+            const density = 0.3; // 30% de chances qu'une cellule soit vivante
+
+            // Parcourir la zone 30x30 centrée sur la position de la souris
+            for (let dx = -halfSize; dx < halfSize; dx++) {
+                for (let dy = -halfSize; dy < halfSize; dy++) {
+                    if (Math.random() < density) {
+                        const x = centerX + dx;
+                        const y = centerY + dy;
+                        cells.set(getCellKey(x, y), true);
+                    }
+                }
+            }
+            draw();
+        }
+
+        // Mettre à jour la position de la souris en temps réel
+        canvas.addEventListener('mousemove', (e) => {
+            lastPos = {
+                x: e.clientX,
+                y: e.clientY
+            };
+            if (isDragging) {
+                offset.x += e.clientX - lastPos.x;
+                offset.y += e.clientY - lastPos.y;
+                lastPos = {
+                    x: e.clientX,
+                    y: e.clientY
+                };
+                draw();
+            }
+        });
+    </script>
+</body>
+</html>
